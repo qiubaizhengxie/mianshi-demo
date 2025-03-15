@@ -1,0 +1,67 @@
+# 声明这是一个Drone流水线配置
+kind: pipeline
+# 使用Docker执行器运行流水线
+type: docker
+# 流水线显示名称（在Web界面显示）
+name: skr-oa
+clone:  
+  # 克隆分支
+  branch: master
+  # 默认路径
+  path: /drone/src
+# 全局环境变量
+environment:
+  WORKSPACE: /drone/src  # Drone默认克隆路径
+steps:
+  # 构建阶段开始
+  - name: build  #🌟步骤名称（控制台可见）
+    image: node:18  #🌟指定精确Node版本
+    commands:  #🌟要执行的命令列表
+      - npm install --force  # 强制安装依赖（解决peer依赖问题）
+      - npm run build       # 执行项目构建
+    volumes:  # 挂载卷配置
+      - name: node-cache  # 引用已定义的卷
+        path: /drone/src/node_modules  # 挂载到容器内的路径
+
+  # docker阶段
+  - name: publish-image
+    image: plugins/docker
+    volumes:
+    - name: var-run
+      path: /var/run/
+    settings:
+      daemon_off: true
+      purge: false
+      repo: 49.233.17.230:8000/frontend/${DRONE_REPO_NAME}
+      config:
+        from_secret: HARBOR_AUTH_CONFIG
+      insecure: true
+      tag:
+        - latest
+        - ${DRONE_COMMIT}.${DRONE_BUILD_NUMBER}
+      dockerfile: ./Dockerfile
+    when:
+      branch:
+        - dev
+        - test
+        - master
+        - entry-rules
+    
+
+  # # 部署阶段开始
+  - name: to-nginx
+    image: docker:cli  #🌟包含docker命令的官方镜像
+    depends_on: [build]  #🌟确保在构建完成后执行
+    volumes:
+      - name: docker-sock  #🌟关键配置：挂载Docker套接字
+        path: /var/run/docker.sock  # 容器内Docker连接路径
+    commands:
+      - docker cp /drone/src/dist nginx:/usr/share/nginx/html/  #🌟复制构建产物
+
+volumes:  #🌟全局卷定义
+  - name: node-cache
+    host:   # 宿主机目录
+      path: /root/docker/drone/drone-data/node-cache/skr-oa # 存储项目依赖文件，下次构建会快一点
+  - name: docker-sock
+    host:  #🌟映射宿主机路径
+      path: /var/run/docker.sock  # 宿主机Docker套接字位置
