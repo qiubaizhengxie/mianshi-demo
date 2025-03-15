@@ -145,7 +145,7 @@ const fetchList = debounce((isSearch:boolean = false) => {
 
   const setSearchList = () => {
     cardList.value.forEach(i => {
-      i.name = `${i.id}_${unref(keyword)}`
+      i.name = `search-${i.id}_${unref(keyword)}`
     })
   }
 
